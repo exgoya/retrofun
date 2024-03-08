@@ -1,0 +1,53 @@
+
+pip install sqlalchemy
+
+# start
+docker-compose up -d
+
+# pg admin url : http://192.168.0.120:8080/
+
+# docker-compose 종료 데이터가 휘발 되지 않음 별도의 볼륨
+docker-compose down 
+
+DATABASE_URL='postgresql+psycopg2://retrofun:ekd9wkd@192.168.0.120:5432/retrofun'
+
+# python-dotenv os 환경변수 읽어주는 lib
+pip install python-dotenv
+
+== Database Engine ==
+# create_engine property
+echo=True # 모든 sql 문 로깅 debug시 유용
+pool_size=<N> # connection pool size default=5
+max_overflow=<N> #사용량이 급증하면 만들 수 있는 초과 최대 연결 수 ( default=10 )
+
+== Models ==
+
+#Mapped 로도 충분하지만 추가 속성 지정이 필요한 경우 = mapped_column() 함수를 통해 지정할 수 있다I
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64))
+    manufacturer: Mapped[str] = mapped_column(String(64))
+    year: Mapped[int]
+    country: Mapped[str] = mapped_column(String(32))
+    cpu: Mapped[str] = mapped_column(String(32))
+
+__repr__
+print 하는 방법을 명시
+{{{
+    def __repr__(self):
+        return f'Product({self.id}, "{self.name}")'
+}}}
+
+== Database Metadata ==
+convention 지정하는 방법
+{{{
+    class Model(DeclarativeBase):
+    metadata = MetaData(naming_convention={
+        "ix": "ix_%(column_0_label)s",
+        "uq": "uq_%(table_name)s_%(column_0_name)s",
+        "ck": "ck_%(table_name)s_%(constraint_name)s",
+        "fk": "fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s",
+        "pk": "pk_%(table_name)s",
+    })
+}}}
+
+
