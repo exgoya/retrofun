@@ -51,3 +51,524 @@ convention 지정하는 방법
 }}}
 
 
+== Queries ==
+
+create session
+{{{
+(venv) [goya@tech10 retrofun]$ cd chapture2/
+(venv) [goya@tech10 chapture2]$ ls
+__pycache__  db.py  env  import_products.py  models.py  products.csv
+(venv) [goya@tech10 chapture2]$ python
+Python 3.9.17 (main, Jul 12 2023, 16:08:43) 
+[GCC 4.8.5 20150623 (Red Hat 4.8.5-44)] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from db import Session
+>>> from models import Product
+>>> session=Session()
+}}}
+
+generate query
+{{{
+>>> from sqlalchemy import select
+>>> q = select(Product)
+>>> print(q)
+SELECT products.id, products.name, products.manufacturer, products.year, products.country, products.cpu 
+FROM products
+}}}
+
+execute query
+{{{
+>>> r = session.execute(q)
+}}}
+print query list
+{{{
+>>> list(r)
+[(Product(1, "Acorn Atom"),), (Product(2, "BBC Micro"),), (Product(.........))]
+>>> session.execute(q).all()
+[(Product(1, "Acorn Atom"),), (Product(2, "BBC Micro"),), (Product(3, "Elec.......))]
+>>> 
+}}}
+print row using for
+{{{
+
+>>> r = session.execute(q)
+>>> for row in r:
+...    print(row)
+... 
+(Product(1, "Acorn Atom"),)
+(Product(2, "BBC Micro"),)
+(Product(3, "Electron"),)
+(Product(4, "BBC Master"),)
+(Product(5, "Acorn Archimedes"),)
+(Product(6, "A7000"),)
+(Product(7, "CPC 464"),)
+(Product(8, "CPC 664"),)
+(Product(9, "CPC 6128"),)
+.
+.
+.
+.
+
+}}}
+
+with scalars
+{{[
+>>> session.scalars(q).all()
+[Product(1, "Acorn Atom"), Product(2, "BBC Micro"), Product(3, "Electron"), Product(4, "BBC Master"), Product(5, "Acorn Archimedes"), Product(6, "A7000"), Product(7, "CPC 464"), Product(8, "CPC 664"), Product(9, "CPC 6128"), Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(12, "PCW"), Product(13, "PC-1512"), Product(14, "CEC-I Zhonghua"), Product(15, "Imagination Machine"), Product(16, "Apple II"), Product(17, "Apple IIe"), Product(18, "Apple IIc"), Product(19, "Apple IIc Plus"), Product(20, "Apple II Plus"), Product(21, "Apple IIGS"), Product(22, "Apricot F1"), Product(23, "CT-80"), Product(24, "Atari 400"), Product(25, "Atari 800"), Product(26, "Atari..)]
+]}}
+
+{{{
+>>> r = session.scalar(q)
+>>> r
+Product(1, "Acorn Atom")
+>>> r = session.execute(q)
+>>> r 
+<sqlalchemy.engine.result.ChunkedIteratorResult object at 0x7f9e97b1bf40>
+}}}
+
+{{{
+>>> q = select(Product).where(Product.manufacturer == 'Commodore') 
+>>> session.scalars(q).all()
+[Product(39, "PET"), Product(40, "VIC-20"), Product(41, "Commodore 64"), Product(42, "Commodore Executive 64"), Product(43, "MAX Machine"), Product(44, "Commodore 16"), Product(45, "Commodore 116"), Product(46, "Plus/4"), Product(47, "Commodore 128"), Product(48, "Amiga")]
+}}}
+
+where
+{{{
+>>> q = select(Product).where(Product.year >= 1990)
+>>> session.scalars(q).all()
+[Product(6, "A7000"), Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(32, "Atari TT"), Product(33, "Falcon"), Product(60, "Dubna 48K"), Product(76, "IBM PS/1"), Product(79, "Hobbit")]
+>>> print(q)
+SELECT products.id, products.name, products.manufacturer, products.year, products.country, products.cpu 
+FROM products 
+WHERE products.year >= :year_1
+}}}
+
+multiple where
+{{{
+>>> q = (select(Product) 
+...         .where(Product.manufacturer == 'Commodore')
+...         .where(Product.year == 1980))
+>>> 
+>>> session.scalars(q).all()
+[Product(40, "VIC-20")]
+}}}
+
+multiple arguments
+{{{
+>>> q = select(Product).where(Product.manufacturer == 'Commodore',Product.year == 1980)
+>>> session.scalars(q).all()
+[Product(40, "VIC-20")]
+}}}
+
+or
+{{{
+>>> from sqlalchemy import or_
+>>> q = select(Product).where(or_(Product.year < 1970, Product.year > 1990))
+>>> session.scalars(q).all()
+[Product(6, "A7000"), Product(33, "Falcon"), Product(60, "Dubna 48K"), Product(74, "Honeywell 316")]
+}}}
+
+like
+{{{
+>>> q = select(Product).where(Product.name.like('%Sinclair%'))
+>>> session.scalars(q).all()
+[Product(128, "Sinclair QL"), Product(138, "Timex Sinclair 1000"), Product(139, "Timex Sinclair 1500"), Product(140, "Timex Sinclair 2048")]
+}}}
+
+between
+{{{
+>>> q = select(Product).where(Product.year.between(1970,1979))
+>>> session.scalars(q).all()
+[Product(15, "Imagination Machine"), Product(16, "Apple II"), Product(20, "Apple II Plus"), Product(24, "Atari 400"), Product(25, "Atari 800"), Product(34, "Bally Brain"), Product(35, "Bally Astrocade"), Product(39, "PET"), Product(65, "Exidy Sorcerer"), Product(77, "Interact Home Computer"), Product(78, "Compucolor II"), Product(84, "ABC 80"), Product(101, "TRS-80 Model I"), Product(122, "MZ"), Product(129, "Sord M200 Smart Home Computer"), Product(132, "TI-99/4"), Product(133, "TI-99/4A"), Product(146, "VideoBrain Family Computer")]
+
+>>> print(q)
+SELECT products.id, products.name, products.manufacturer, products.year, products.country, products.cpu 
+FROM products 
+WHERE products.year BETWEEN :year_1 AND :year_2
+}}}
+
+sql bind value 출력
+{{{
+>>> print(q.compile(compile_kwargs={'literal_binds':True}))
+SELECT products.id, products.name, products.manufacturer, products.year, products.country, products.cpu 
+FROM products 
+WHERE products.year BETWEEN 1970 AND 1979
+}}}
+
+order by results
+{{{
+>>> q = select(Product).order_by(Product.name)
+>>> session.scalars(q).all()
+[Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(6, "A7000"), Product(131, "Aamber Pegasus"), Product(84, "ABC 80"), Product(5, "Acorn Archimedes"), Product(1, "Acorn Atom"), Product(62, "AGAT-9"), Product(55, "Alpha"), Product(48, "Amiga"), Product(16, "Apple II"),....]
+>>> 
+}}}
+
+order by desc
+{{{
+>>> q = select(Product).order_by(Product.year.desc())
+>>> session.scalars(q).all()
+[Product(6, "A7000"), Product(33, "Falcon"), Product(60, "Dubna 48K"), Product(79, "Hobbit"), Product(32, "Atari TT"), Product(76, "IBM PS/1"), Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(135, "MAŤO"), Product(93, "SAM Coupé"), Product(70, "FM Towns"), Product(80, "Iskra-1030"), Product(19, "Apple IIc Plus"), Product(104, "Euro PC"), Product(5, "Acorn Archimedes"), Product(124, "Sharp X68000"), Product(119, "KC 87"), Pro...]
+}}}
+
+multiple arguments order by
+{{{
+>>> q = select(Product).order_by(Product.year.desc(), Product.name.asc())
+>>> print(q)
+SELECT products.id, products.name, products.manufacturer, products.year, products.country, products.cpu 
+FROM products ORDER BY products.year DESC, products.name ASC
+>>> session.scalars(q).all()
+[Product(6, "A7000"), Product(33, "Falcon"), Product(60, "Dubna 48K"), Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(32, "Atari TT"), Product(79, "Hobbit"), Product(76, "IBM PS/1"), Product(70, "FM Towns"), Product(80, "Iskra-1030"), Product(135, "MAŤO"), Product(93, "SAM Coupé"), Product(19, "Apple IIc Plus"), Product(104, "Euro PC"), Product(5, "Acorn Archimedes"), Product(57, "Gama"), Product(119, "KC 87"), Product(124,...)]
+}}}
+
+{{{
+>>> q = select(Product.name)
+>> session.scalars(q).all()
+['Acorn Atom', 'BBC Micro', 'Electron', 'BBC Master', 'Acorn Archimedes', 'A7000', ...]
+}}}
+
+{{{
+>> q = select(Product.name,Product.manufacturer)
+>>> session.execute(q).all()
+[('Acorn Atom', 'Acorn Computers Ltd'), ('BBC Micro', 'Acorn Computers Ltd'), ('Electron', 'Acorn Computers Ltd'), ('BBC Master', 'Acorn Computers Ltd'), ('Acorn Archimedes', 'Acorn Computers Ltd'), ('A7000', 'Acorn Computers Ltd'), ('CPC 464', 'Amstrad'), ('CPC 664', 'Amstrad'),...]
+>>> session.scalars(q).all()
+['Acorn Atom', 'BBC Micro', 'Electron', 'BBC Master', 'Acorn Archimedes', 'A7000', 'CPC 464', 'CPC 664', 'CPC 6128', '464 Plus', '6128 Plus', 'PCW', 'PC-1512', 'CEC-I Zhonghua', 'Imagination Machine', 'Apple II', 'Apple IIe', 'Apple IIc', 'Apple IIc Plus',...]
+}}}
+
+Aggregation Functions
+{{{
+>>> from sqlalchemy import func
+>>> q = select(func.count(Product.id))
+>>> r = session.scalar(q)
+>>> r
+149
+}}}
+{{{
+>>> q = select(func.count()).select_from(Product)
+>>> r = session.scalar(q)
+>>> r
+149
+}}}
+
+{{{
+>>> q = select(func.min(Product.year),func.max(Product.year))
+>>> r = session.execute(q)
+>>> r.first()
+(1969, 1995)
+}}}
+
+Result Grouping
+{{{
+>>> q = select(Product.manufacturer).order_by(Product.manufacturer)
+>>> session.scalars(q).all()
+['Acorn Computers Ltd', 'Acorn Computers Ltd', 'Acorn Computers Ltd', 'Acorn Computers Ltd', 'Acorn Computers Ltd', 'Acorn Computers Ltd', 'AGAT', 'Amstrad', 'Amstrad', 'Amstrad', 'Amstrad', 'Amstrad', 'Amstrad', 'Amstrad', 'APF Electronics, Inc....]
+}}}
+
+distinct
+{{{
+>>> q = select(Product.manufacturer).order_by(Product.manufacturer).distinct()
+>>> session.scalars(q).all()
+['Acorn Computers Ltd', 'AGAT', 'Amstrad', 'APF Electronics, Inc.', 'Apple Computer', 'Apricot Computers', 'Aster Computers', 'Atari Corporation', 'Atari, Inc.', 'Bally Consumer Products', 'Brasov Computer', 'Camputers', 'Coleco', 'Comércio de Componentes Eletrônicos', 'Commodore', 'Comx World Operations', 'Data Applications International', 'Didaktik', 'Dragon Data', 'Dubna', 'EACA', 'Elektronika', 'Elektronska Industrija Niš', 'Exidy', 'Franklin Computer Corporation', 'Fujitsu', 'GEM', 'Gradiente', 'Grundy Business Systems', 'Honeywell', 'IBM', 'Intelligent Software', 'Intelligent Systems Corporation', 'Interact', 'Intercompex', 'Iskra', 'Ivasim', 'Jupiter Cantab', 'Lambda Electronics', 'Luxor', 'Matra', 'Mattel', 'Memotech', 'Microbee Systems', 'Microdigital Eletronica', 'Miles Gordon Technology', 'Multitech', 'NEC', 'NEC Home Electronics', 'PEL Varaždin', 'Philips', 'Pravetz', 'Progeni Systems / Polycorp', 'Prológica', 'Rabbit', 'Radio Shack', 'Schneider Computer Division', 'Sega', 'Sharp', 'Sinclair Research', 'Sord Computer Corporation', 'Štátny majetok Závadka š.p.', 'Tangerine Computer Systems', 'Technosys', 'Tesla', 'Texas Instruments', 'Thomson', 'Timex Sinclair', 'Tomy', 'Tsinghua University', 'VEB Robotron', 'Vector', 'Videobrain', 'Videoton', 'Vtech', 'West Computer AS']
+}}}
+distinct count
+{{{
+>>> q = select(func.count(Product.manufacturer.distinct()))
+>>> session.scalar(q)
+76
+>>> session.execute(q)
+<sqlalchemy.engine.result.ChunkedIteratorResult object at 0x7f9e97651240>
+}}}
+
+{{{
+>>> q = (select(Product.manufacturer)                             
+...         .group_by(Product.manufacturer)
+...         .order_by(Product.manufacturer))
+>>> 
+>>> session.scalar(q)
+'Acorn Computers Ltd'
+>>> session.scalar(q).all()
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+AttributeError: 'str' object has no attribute 'all'
+>>> session.scalars(q).all()
+['Acorn Computers Ltd', 'AGAT', 'Amstrad', 'APF Electronics, Inc.', 'Apple Computer', 'Apricot Computers', 'Aster Computers', 'Atari Corporation', 'Atari, Inc.', 'Bally Consumer Products', 'Brasov Computer', 'Camputers', 'Coleco', 'Comércio de Componentes Eletrônicos', 'Commodore', 'Comx Worl...]
+}}}
+
+group by count
+{{{
+>>> q = (select(
+...        Product.manufacturer,
+...        func.min(Product.year),
+...        func.max(Product.year),
+...        func.count()
+...     )
+...     .group_by(Product.manufacturer)
+...     .order_by(Product.manufacturer))
+>>> session.execute(q).all()
+[('Acorn Computers Ltd', 1980, 1995, 6), ('AGAT', 1984, 1984, 1), ('Amstrad', 1984, 1990, 7), ('APF Electronics, Inc.', 1979, 1979, 1), ('Apple Computer', 1977, 1988, 6), ('Apricot Computers', 1984, 1984, 1), ('Aster Computers', 1982, 1982, 1), ('Atari Corporation', 1985, 1992, 3), ('Atari, Inc.', 1979, 1985, 7), ('Bally Consumer Products', 1977, 1979, 2), ('Brasov Computer', 1986, 1986, 1), ('Camputers', 1983, 1983, 1), ('Coleco', 1983, 1983, 1), ('Comércio de Componentes Eletrônicos', 1985, 1985, 1), ('Commodore', 1977, 1985, 10), ('Comx World Operations', 1983, 1983, 1), ('Data Applications International', 1980, 1980, 1), ('Didaktik', 1986, 1987, 3), ...]
+}}}
+
+having count
+{{{
+>>> q = (select(
+...         Product.manufacturer,
+...         func.count()
+...      )
+...      .group_by(Product.manufacturer)
+...      .having(func.count() >= 5)
+...      .order_by(Product.manufacturer))
+>>> session.execute(q).all()
+[('Acorn Computers Ltd', 6), ('Amstrad', 7), ('Apple Computer', 6), ('Atari, Inc.', 7), ('Commodore', 10), ('Radio Shack', 6), ('Timex Sinclair', 6)]
+>>> print(q)
+SELECT products.manufacturer, count(*) AS count_1 
+FROM products GROUP BY products.manufacturer 
+HAVING count(*) >= :count_2 ORDER BY products.manufacturer
+}}}
+
+lable()
+{{{
+>>> num_products = func.count().label(None)
+>>> q = (select(
+...          Product.manufacturer,
+...         num_products            
+...      )
+...      .group_by(Product.manufacturer)
+...      .having(num_products >=5)
+...      .order_by(Product.manufacturer))
+>>> print(q)
+SELECT products.manufacturer, count(*) AS count_1 
+FROM products GROUP BY products.manufacturer 
+HAVING count(*) >= :param_1 ORDER BY products.manufacturer
+>>> session.execute(q).all()
+[('Acorn Computers Ltd', 6), ('Amstrad', 7), ('Apple Computer', 6), ('Atari, Inc.', 7), ('Commodore', 10), ('Radio Shack', 6), ('Timex Sinclair', 6)]
+}}}
+
+alias
+{{{
+>>> num_products = func.count().label('num_products')
+>>> q = (select(
+...          Product.manufacturer,
+...         num_products            
+...      )
+...      .group_by(Product.manufacturer)
+...      .having(num_products >=5)
+...      .order_by(Product.manufacturer))
+>>> print(q)
+SELECT products.manufacturer, count(*) AS num_products 
+FROM products GROUP BY products.manufacturer 
+HAVING count(*) >= :param_1 ORDER BY products.manufacturer
+}}}
+
+Pagination
+{{{
+>>> q = select(Product).order_by(Product.name).limit(3)
+>>> session.scalars(q).all()
+[Product(10, "464 Plus"), Product(11, "6128 Plus"), Product(6, "A7000")]
+}}}
+{{{
+>>> q = select(Product).order_by(Product.name).limit(3).offset(3)
+>>> session.scalars(q).all()
+[Product(131, "Aamber Pegasus"), Product(84, "ABC 80"), Product(5, "Acorn Archimedes")]
+}}}
+
+{{{
+>>> q = select(Product).order_by(Product.name).where(Product.name >= 'A700').limit(3)
+>>> q = (select(Product)  
+...         .order_by(Product.name.desc())
+...         .where(Product.name < 'Aamber Pegasus')
+...         .limit(3))
+>>> session.scalars(q).all()
+[Product(6, "A7000"), Product(11, "6128 Plus"), Product(10, "464 Plus")]
+>>> 
+}}}
+
+pk select
+{{{
+>>> q = select(Product).where(Product.id == 23)
+>>> session.scalar(q)
+Product(23, "CT-80")
+}}}
+
+{{{
+>>> session.get(Product,23)
+Product(23, "CT-80")
+}}}
+
+
+Indexes
+{{{
+class Product(Model):
+    __tablename__ = 'products'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), index=True)
+    manufacturer: Mapped[str] = mapped_column(String(64), index=True)
+    year: Mapped[int] = mapped_column(index=True)
+    country: Mapped[str] = mapped_column(String(32))
+    cpu: Mapped[str] = mapped_column(String(32))
+
+    def __repr__(self):
+        return f'Product({self.id}, "{self.name}")'
+}}}
+
+Constraints
+
+* null 허용을 위해서는 Optional[str]을 사용해야 함
+{{{
+# ...
+from typing import Optional
+
+class Product(Model):
+    __tablename__ = 'products'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+    manufacturer: Mapped[str] = mapped_column(String(64), index=True)
+    year: Mapped[int] = mapped_column(index=True)
+    country: Mapped[Optional[str]] = mapped_column(String(32))
+    cpu: Mapped[Optional[str]] = mapped_column(String(32))
+
+    def __repr__(self):
+        return f'Product({self.id}, "{self.name}")'
+
+}}}
+
+Deletions
+{{{
+>>> session.get(Product,23)
+Product(23, "CT-80")
+>>> p = session.get(Product,23)
+>>> session.delete(p)
+>>> session.commit()
+>>> 
+>>> p = session.get(Product,23)
+>>> print(p)
+None
+}}}
+
+Exercises
+
+env
+{{{
+(venv) [goya@tech10 chapture2]$ python
+Python 3.9.17 (main, Jul 12 2023, 16:08:43) 
+[GCC 4.8.5 20150623 (Red Hat 4.8.5-44)] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from db import Session
+>>> from models import Product
+>>> s = Session()
+>>> p = s.get(Product,23)
+>>> p
+Product(23, "CT-80")
+from sqlalchemy import select
+}}}
+
+1. The first three products in alphabetical order built in the year 1983. 
+{{{
+>>> q = select(Product.id, Product.name,Product.year).where(Product.year == 1983).order_by(Product.name.asc()).limit(3)
+>>> s.execute(q).all()
+[(17, 'Apple IIe', 1983), (85, 'Aquarius', 1983), (26, 'Atari 1200XL', 1983)]
+}}}
+
+2. Products that use the "Z80" CPU or any of its clones. Assume that all products based on this CPU have the word "Z80" in the cpu column. 
+{{{
+>>> q = select(Product.id, Product.name, Product.cpu).where(Product.cpu.like('%Z80%'))
+>>> s.execute(q).all()
+[(7, 'CPC 464', 'Z80'), (8, 'CPC 664', 'Z80'), (9, 'CPC 6128', 'Z80'), (10, '464 Plus', 'Z80'), (11, '6128 Plus', 'Z80'), (12, 'PCW', 'Z80'), (23, 'CT-80', 'Z80'), (34, 'Bally Brain', 'Z80'), (35, 'Bally Astrocade', 'Z80'), (36, 'CoBra', 'Z80'), (37, 'Lynx', 'Z80'), (38, 'Coleco Adam', 'Z80'), (47, 'Commodore 128', '8502 (6502) / Z80'), (51, 'VTech Laser 200', 'Z80'), (52, 'Video Genie', 'Z80'), (53, 'Colour Genie', 'Z80'), (54, 'Rabbit\xa0RX83', 'Z80'), (55, 'Alpha', 'Z80'), (56, 'Beta', 'Z80'), (57, 'Gama', 'Z80'), (60, 'Dubna 48K', 'Z80 (compatible)'), (65, 'Exidy Sorcerer', 'Z80'), (66, 'Enterprise 64', 'Z80'), (67, 'Enterprise 128', 'Z80'), (68, 'Lambda 8300', 'Z80'), (72, 'Grundy NewBrain', 'Z80'), (73, 'Gradiente Expert', 'Z80'), (79, 'Hobbit', 'Z80 compatible'), (83, 'Jupiter ACE', 'Z80'), (84, 'ABC 80', 'Z80'), (85, 'Aquarius', 'Z80'), (87, 'MTX500', 'Z80'), (88, 'MTX512', 'Z80'), (89, 'RS128', 'Z80'), (90, 'MicroBee', 'Z80'), (91, 'CCE MC-1000', 'Z80'), (92, 'TK82C', 'Z80'), (93, 'SAM Coupé', 'Z80'), (96, 'PC-6000', 'Z80'), (97, 'PC-8800', 'Z80'), (101, 'TRS-80 Model I', 'Z80'), (110, 'P2000', 'Z80'), (111, 'G7480', 'Z80'), (118, 'KC 85', 'Z80 compatible'), (119, 'KC 87', 'Z80 compatible'), (120, 'Z1013', 'Z80 compatible'), (121, 'SC-3000', 'Z80 compatible'), (122, 'MZ', 'Z80 compatible'), (123, 'Sharp X1', 'Z80 compatible'), (125, 'ZX80', 'Z80'), (126, 'ZX81', 'Z80'), (127, 'ZX Spectrum', 'Z80'), (129, 'Sord M200 Smart Home Computer', 'Z80'), (130, 'Sord M5', 'Z80'), (138, 'Timex Sinclair 1000', 'Z80'), (139, 'Timex Sinclair 1500', 'Z80'), (140, 'Timex Sinclair 2048', 'Z80'), (141, 'Timex Computer 2048', 'Z80'), (142, 'Timex Computer 2068', 'Z80'), (143, 'Komputer 2086', 'Z80'), (147, 'TVC', 'Z80'), (148, 'West PC-800', '6502, Z80'), (149, 'GEM 1000', 'Z80')]
+>>> 
+}}}
+3. Products that use either the "Z80" or the "6502" CPUs, or any of its clones, built before 1990, sorted alphabetically by name. 
+{{{
+>>> from sqlalchemy import or_
+>>> q = select(Product.id,Product.name,Product.cpu,Product.year).where(or_(Product.cpu.like('%Z80'),Product.cpu.like('%6502%')),Product.year < 1990).order_by(Product.name)
+>>> s.execute(q).all()
+[(84, 'ABC 80', 'Z80', 1978), (1, 'Acorn Atom', '6502', 1980), (55, 'Alpha', 'Z80', 1986), (16, 'Apple II', '6502', 1977), (17, 'Apple IIe', '6502', 1983), (20, 'Apple II Plus', '6502', 1979), (85, 'Aquarius', 'Z80', 1983), (26, 'Atari 1200XL', '6502', 1983), (30, 'Atari 130XE', '6502C', 1985), (24, 'Atari 400', '6502', 1979), (27, 'Atari 600XL', '6502', 1983), (29, 'Atari 65XE', '6502C', 1985), (25, 'Atari 800', '6502', 1979), (28, 'Atari 800XL', '6502', 1983), (35, 'Bally Astrocade', 'Z80', 1977), (34, 'Bally Brain', 'Z80', 1979), (2, 'BBC Micro', '6502', 1981), (56, 'Beta', 'Z80', 1986), (91, 'CCE MC-1000', 'Z80', 1985), (14, 'CEC-I Zhonghua', '6502', 1986), (36, 'CoBra', 'Z80', 1986), (38, 'Coleco Adam', 'Z80', 1983), (53, 'Colour Genie', 'Z80', 1983), (45, 'Commodore 116', '8501 (6502)', 1984), (47, 'Commodore 128', '8502 (6502) / Z80', 1985), (44, 'Commodore 16', '8501 (6502)', 1984), (7, 'CPC 464', 'Z80', 1984), (9, 'CPC 6128', 'Z80', 1984), (8, 'CPC 664', 'Z80', 1984), (23, 'CT-80', 'Z80', 1982), (3, 'Electron', '6502', 1983), (67, 'Enterprise 128', 'Z80', 1985), (66, 'Enterprise 64', 'Z80', 1985), (65, 'Exidy Sorcerer', 'Z80', 1978), (69, 'Franklin ACE', '6502', 1982), (111, 'G7480', 'Z80', 1983), (108, 'Galeb', '6502', 1981), (57, 'Gama', 'Z80', 1987), (149, 'GEM 1000', 'Z80', 1985), (73, 'Gradiente Expert', 'Z80', 1985), (72, 'Grundy NewBrain', 'Z80', 1982), (115, 'IMKO-1', '6502', 1980), (81, 'Ivel Ultra', '6502 compatible', 1984), (82, 'Ivel Z3', '6502 compatible', 1983), (83, 'Jupiter ACE', 'Z80', 1982), (143, 'Komputer 2086', 'Z80', 1986), (68, 'Lambda 8300', 'Z80', 1985), (37, 'Lynx', 'Z80', 1983), (90, 'MicroBee', 'Z80', 1983), (94, 'Microprofessor III', '6502', 1983), (87, 'MTX500', 'Z80', 1983), (88, 'MTX512', 'Z80', 1983), (109, 'Orao', '6502', 1984), (105, 'Oric 1', '6502', 1983), (106, 'Oric Atmos', '6502', 1984), (107, 'Oric Telestrat', '6502', 1986), (110, 'P2000', 'Z80', 1980), (96, 'PC-6000', 'Z80', 1981), (97, 'PC-8800', 'Z80', 1981), (12, 'PCW', 'Z80', 1985), (39, 'PET', '6502', 1977), (46, 'Plus/4', '8501 (6502)', 1984), (113, 'Pravetz 8', 'CM630 (6502 clone)', 1985), (114, 'Pravetz 8D', '6502', 1982), (54, 'Rabbit\xa0RX83', 'Z80', 1983), (89, 'RS128', 'Z80', 1983), (93, 'SAM Coupé', 'Z80', 1989), (129, 'Sord M200 Smart Home Computer', 'Z80', 1977), (130, 'Sord M5', 'Z80', 1982), (141, 'Timex Computer 2048', 'Z80', 1984), (142, 'Timex Computer 2068', 'Z80', 1983), (138, 'Timex Sinclair 1000', 'Z80', 1982), (139, 'Timex Sinclair 1500', 'Z80', 1982), (140, 'Timex Sinclair 2048', 'Z80', 1984), (92, 'TK82C', 'Z80', 1985), (101, 'TRS-80 Model I', 'Z80', 1977), (147, 'TVC', 'Z80', 1986), (40, 'VIC-20', '6502', 1980), (52, 'Video Genie', 'Z80', 1980), (51, 'VTech Laser 200', 'Z80', 1985), (148, 'West PC-800', '6502, Z80', 1984), (125, 'ZX80', 'Z80', 1980), (126, 'ZX81', 'Z80', 1981), (127, 'ZX Spectrum', 'Z80', 1982)]
+}}}
+4. The manufacturers that built products in the 1980s. 
+{{{
+>>> q = select(Product.manufacturer).where(Product.year.between(1980,1989)).distinct()
+>>> s.scalars(q).all()
+['Radio Shack', 'NEC', 'Mattel', 'Aster Computers', 'Iskra', 'Sega', 'Commodore', 'Jupiter Cantab', 'Gradiente', 'Atari, Inc.', 'Thomson', 'Tsinghua University', 'Amstrad', 'Sharp', 'Atari Corporation', 'Apple Computer', 'Miles Gordon Technology', 'Brasov Computer', 'Philips', 'Schneider Computer Division', 'Ivasim', 'Comx World Operations', 'Acorn Computers Ltd', 'Technosys', 'Memotech', 'Grundy Business Systems', 'Franklin Computer Corporation', 'Vector', 'Pravetz', 'Microbee Systems', 'Videoton', 'Matra', 'Elektronska Industrija Niš', 'Sinclair Research', 'Didaktik', 'Lambda Electronics', 'AGAT', 'EACA', 'Tomy', 'Coleco', 'VEB Robotron', 'GEM', 'Microdigital Eletronica', 'Prológica', 'Tesla', 'PEL Varaždin', 'Camputers', 'Fujitsu', 'Rabbit', 'NEC Home Electronics', 'West Computer AS', 'Tangerine Computer Systems', 'Multitech', 'Apricot Computers', 'Timex Sinclair', 'Sord Computer Corporation', 'Comércio de Componentes Eletrônicos', 'Elektronika', 'Štátny majetok Závadka š.p.', 'Data Applications International', 'Vtech', 'Intelligent Software', 'IBM', 'Dragon Data', 'Progeni Systems / Polycorp']
+
+>>> print(q)
+SELECT DISTINCT products.manufacturer 
+FROM products 
+WHERE products.year BETWEEN :year_1 AND :year_2
+}}}
+
+5. Manufacturers whose names start with the letter "T", sorted alphabetically. 
+{{{
+>>> q = select(Product.name).where(Product.name.like('T%')).order_by(Product.name)
+>>> s.scalars(q).all()
+['Tandy 1000', 'TI-99/4', 'TI-99/4A', 'Timex Computer 2048', 'Timex Computer 2068', 'Timex Sinclair 1000', 'Timex Sinclair 1500', 'Timex Sinclair 2048', 'TK82C', 'TO7', 'Tomy Tutor', 'TRS-80 Color Computer', 'TRS-80 Color Computer 2', 'TRS-80 Color Computer 3', 'TRS-80 MC-10', 'TRS-80 Model I', 'TVC']
+}}}
+
+6. The first and last years in which products have been built in Croatia, along with the number of products built.
+{{{
+>>> from sqlalchemy import func
+>>> q = select(func.min(Product.year),func.max(Product.year),func.count()).where(Product.country == 'Croatia')
+>>> s.scalars(q).all()
+[1981]
+>>> s.execute(q).all()
+[(1981, 1984, 4)]
+}}}
+
+7. The number of products that were built each year. The results should start from the year with the most products, to the year with the least. Years in which no products were built do not need to be included. 
+{{{
+>>> q = select(Product.year, func.count()).group_by(Product.year).order_by(func.count().desc())
+>>> s.execute(q).all()
+[(1983, 24), (1984, 21), (1985, 21), (1982, 17), (1986, 11), (1980, 10), (1979, 9), (1977, 7), (1987, 6), (1981, 6), (1990, 5), (1989, 4), (1988, 2), (1978, 2), (1969, 1), (1995, 1), (1992, 1), (1991, 1)]
+
+>>> count_years = func.count().label(None)
+>>> q = select(Product.year, count_years).group_by(Product.year).order_by(count_years.desc())
+>>> s.execute(q).all()
+[(1983, 24), (1984, 21), (1985, 21), (1982, 17), (1986, 11), (1980, 10), (1979, 9), (1977, 7), (1987, 6), (1981, 6), (1990, 5), (1989, 4), (1988, 2), (1978, 2), (1969, 1), (1995, 1), (1992, 1), (1991, 1)]
+}}}
+
+8. The number of manufacturers in the United States (note that the country field for these products is set to USA)
+{{{
+>>> q = select(func.count(Product.manufacturer.distinct())).where(Product.country == 'USA')
+>>> s.scalar(q)
+Traceback (most recent call last):
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1970, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 924, in do_execute
+    cursor.execute(statement, parameters)
+psycopg2.errors.InFailedSqlTransaction: current transaction is aborted, commands ignored until end of transaction block
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2354, in scalar
+    return self._execute_internal(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 2191, in _execute_internal
+    result: Result[Any] = compile_state_cls.orm_execute_statement(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/orm/context.py", line 293, in orm_execute_statement
+    result = conn.execute(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/sql/elements.py", line 514, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1849, in _execute_context
+    return self._exec_single_context(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1989, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 2356, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1970, in _exec_single_context
+    self.dialect.do_execute(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/default.py", line 924, in do_execute
+    cursor.execute(statement, parameters)
+sqlalchemy.exc.InternalError: (psycopg2.errors.InFailedSqlTransaction) current transaction is aborted, commands ignored until end of transaction block
+
+[SQL: SELECT count(DISTINCT products.manufacturer) AS count_1 
+FROM products 
+WHERE products.country = %(country_1)s]
+[parameters: {'country_1': 'USA'}]
+(Background on this error at: https://sqlalche.me/e/20/2j85)
+>>> 
+????????
+}}}
