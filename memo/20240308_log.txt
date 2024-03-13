@@ -572,3 +572,25 @@ WHERE products.country = %(country_1)s]
 >>> 
 ????????
 }}}
+
+20240313 (wed)
+{{{
+
+(venv) [goya@tech10 chapture2]$ python
+Python 3.9.17 (main, Jul 12 2023, 16:08:43) 
+[GCC 4.8.5 20150623 (Red Hat 4.8.5-44)] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from db import Session
+>>> from models import Product
+>>> s=Session()
+>>> from sqlalchemy import select
+>>> from sqlalchemy import or_
+>>> from sqlalchemy import func
+>>> q = select(func.count(Product.manufacturer.distinct())).where(Product.country == 'USA')
+>>> s.execute(q).all()
+[(17,)]
+>>> s.scalar(q)
+17
+>>> 
+
+}}}
