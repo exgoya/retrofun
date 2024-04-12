@@ -1,0 +1,41 @@
+=== One-To-Many Relationships ===
+
+###
+class Manufacturer(Model):
+    __tablename__ = 'manufacturers'
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(64), index=True, unique=True)
+
+    products: Mapped[list['Product']] = relationship(
+        cascade='all, delete-orphan', back_populates='manufacturer')
+
+    def __repr__(self):
+        return f'Manufacturer({self.id}, "{self.name}")'
+
+
+### foreignKey
+class Product(Model):
+...
+    manufacturer_id: Mapped[int] = mapped_column(
+        ForeignKey('manufacturers.id'), index=True)
+...
+
+=== SQLAlchemy Relationships ===
+
+
+(venv) [goya@tech10 chapture3]$ python
+Python 3.9.17 (main, Jul 12 2023, 16:08:43)
+[GCC 4.8.5 20150623 (Red Hat 4.8.5-44)] on linux
+Type "help", "copyright", "credits" or "license" for more information.
+>>> from sqlalchemy import select
+>>> from db import Session
+>>> from models import Product,Manufacturer
+>>> session = Session()
+>>> p = session.scalar(select(Product).where(Product.name == 'ZX Spectrum'))
+>>> p
+Product(127, "ZX Spectrum")
+>>> p.manufacturer
+Manufacturer(63, "Sinclair Research")
+>>> p.manufacturer.name
+'Sinclair Research'
