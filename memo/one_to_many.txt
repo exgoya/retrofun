@@ -39,3 +39,717 @@ Product(127, "ZX Spectrum")
 Manufacturer(63, "Sinclair Research")
 >>> p.manufacturer.name
 'Sinclair Research'
+>>> p.manufacturer.products
+[Product(125, "ZX80"), Product(126, "ZX81"), Product(127, "ZX Spectrum"), Product(128, "Sinclair QL")]
+
+>>> m = session.scalar(select(Manufacturer).where(Manufacturer.name == 'Texas Instruments'))
+>>> m
+Manufacturer(66, "Texas Instruments")
+>>> m.products
+[Product(132, "TI-99/4"), Product(133, "TI-99/4A")]
+
+
+>>> q = select(Product.name, Manufacturer.name).join(Product.manufacturer)
+>>> session.execute(q).all()
+[('Acorn Atom', 'Acorn Computers Ltd'), ('BBC Micro', 'A..')...]
+
+>>> print(q)
+SELECT products.name, manufacturers.name AS name_1
+FROM products JOIN manufacturers ON manufacturers.id = products.manufacturer_id
+
+>>> q = (select(
+...        Manufacturer,
+...        func.count(Product.id)
+...      )
+...      .join(Manufacturer.products)
+...      .group_by(Manufacturer)
+...      .order_by(Manufacturer.name))
+>>> session.execute(q).all()
+[(Manufacturer(1, "Acorn Computers Ltd"), 6), (Manufacturer(24, "AGAT"), 1),.....
+
+>>> print(q)
+SELECT manufacturers.id, manufacturers.name, count(products.id) AS count_1
+FROM manufacturers JOIN products ON manufacturers.id = products.manufacturer_id GROUP BY manufacturers.id, manufacturers.name ORDER BY manufacturers.name
+
+
+=== Lazy vs. Eager Relationships ===
+
+-- add echo=True
+engine = create_engine(os.environ['DATABASE_URL'], echo=True)
+
+
+{{{
+>>> m = session.scalar( select (Manufacturer).where(Manufacturer.name == 'Texas Instruments'))
+2024-04-16 20:15:19,856 INFO sqlalchemy.engine.Engine select pg_catalog.version()
+2024-04-16 20:15:19,856 INFO sqlalchemy.engine.Engine [raw sql] {}
+2024-04-16 20:15:19,857 INFO sqlalchemy.engine.Engine select current_schema()
+2024-04-16 20:15:19,858 INFO sqlalchemy.engine.Engine [raw sql] {}
+2024-04-16 20:15:19,858 INFO sqlalchemy.engine.Engine show standard_conforming_strings
+2024-04-16 20:15:19,858 INFO sqlalchemy.engine.Engine [raw sql] {}
+2024-04-16 20:15:19,859 INFO sqlalchemy.engine.Engine BEGIN (implicit)
+2024-04-16 20:15:19,867 INFO sqlalchemy.engine.Engine SELECT manufacturers.id, manufacturers.name
+FROM manufacturers
+WHERE manufacturers.name = %(name_1)s
+2024-04-16 20:15:19,867 INFO sqlalchemy.engine.Engine [generated in 0.00018s] {'name_1': 'Texas Instruments'}
+}}}
+
+처음 액세스할 때 쿼리를 보낸다. 이러한 방식을 Lazy loading 이라고 한다
+ - 너무 많은 쿼리가 암시적으로 수행될 수 있다.
+{{{
+>>> m
+Manufacturer(66, "Texas Instruments")
+>>> m.name
+'Texas Instruments'
+>>> m.products
+2024-04-16 20:18:58,535 INFO sqlalchemy.engine.Engine SELECT products.id AS products_id, products.name AS products_name, products.manufacturer_id AS products_manufacturer_id, products.year AS products_year, products.country AS products_country, products.cpu AS products_cpu
+FROM products
+WHERE %(param_1)s = products.manufacturer_id
+2024-04-16 20:18:58,535 INFO sqlalchemy.engine.Engine [generated in 0.00029s] {'param_1': 66}
+[Product(132, "TI-99/4"), Product(133, "TI-99/4A")]
+
+>>> p = session.get(Product,127)
+2024-04-16 20:20:05,125 INFO sqlalchemy.engine.Engine SELECT products.id AS products_id, products.name AS products_name, products.manufacturer_id AS products_manufacturer_id, products.year AS products_year, products.country AS products_country, products.cpu AS products_cpu
+FROM products
+WHERE products.id = %(pk_1)s
+2024-04-16 20:20:05,125 INFO sqlalchemy.engine.Engine [generated in 0.00041s] {'pk_1': 127}
+
+>>> p.manufacturer
+2024-04-16 20:20:56,411 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:20:56,411 INFO sqlalchemy.engine.Engine [generated in 0.00030s] {'pk_1': 63}
+Manufacturer(63, "Sinclair Research")
+}}}
+
+적절
+{{{
+>>> p = select(Product.name, Manufacturer.name).join(Product.manufacturer)
+>>> session.execute(p).all()
+2024-04-16 20:44:32,753 INFO sqlalchemy.engine.Engine SELECT products.name, manufacturers.name AS name_1
+FROM products JOIN manufacturers ON manufacturers.id = products.manufacturer_id
+2024-04-16 20:44:32,753 INFO sqlalchemy.engine.Engine [cached since 53.57s ago] {}
+[('Acorn Atom', 'Acorn Computers Ltd'), ('BBC Micro', 'Acorn Computers Ltd'), ('Electron', 'Acorn Computers Ltd'), ('BBC Master', 'Acorn Computers Ltd'), ('Acorn Archimedes', 'Acorn Computers Ltd'), ('A7000', 'Acorn Compute...
+}}}
+비효율적인 사용의 예
+
+{{{
+>>> p = select(Product)
+>>> for p in session.scalars(q):
+...  print(p.name, p.manufacturer.name)
+...
+2024-04-16 20:31:21,953 INFO sqlalchemy.engine.Engine SELECT products.id, products.name, products.manufacturer_id, products.year, products.country, products.cpu
+FROM products
+2024-04-16 20:31:21,953 INFO sqlalchemy.engine.Engine [cached since 314s ago] {}
+2024-04-16 20:31:21,956 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,956 INFO sqlalchemy.engine.Engine [cached since 625.5s ago] {'pk_1': 1}
+Acorn Atom Acorn Computers Ltd
+BBC Micro Acorn Computers Ltd
+Electron Acorn Computers Ltd
+BBC Master Acorn Computers Ltd
+Acorn Archimedes Acorn Computers Ltd
+A7000 Acorn Computers Ltd
+2024-04-16 20:31:21,957 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,957 INFO sqlalchemy.engine.Engine [cached since 625.5s ago] {'pk_1': 2}
+CPC 464 Amstrad
+CPC 664 Amstrad
+CPC 6128 Amstrad
+464 Plus Amstrad
+6128 Plus Amstrad
+PCW Amstrad
+PC-1512 Amstrad
+2024-04-16 20:31:21,959 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,959 INFO sqlalchemy.engine.Engine [cached since 625.5s ago] {'pk_1': 3}
+CEC-I Zhonghua Tsinghua University
+2024-04-16 20:31:21,960 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,960 INFO sqlalchemy.engine.Engine [cached since 625.5s ago] {'pk_1': 4}
+Imagination Machine APF Electronics, Inc.
+2024-04-16 20:31:21,961 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,961 INFO sqlalchemy.engine.Engine [cached since 625.5s ago] {'pk_1': 5}
+Apple II Apple Computer
+Apple IIe Apple Computer
+Apple IIc Apple Computer
+Apple IIc Plus Apple Computer
+Apple II Plus Apple Computer
+Apple IIGS Apple Computer
+2024-04-16 20:31:21,962 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,962 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 6}
+Apricot F1 Apricot Computers
+2024-04-16 20:31:21,963 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,963 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 7}
+CT-80 Aster Computers
+2024-04-16 20:31:21,964 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,964 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 8}
+Atari 400 Atari, Inc.
+Atari 800 Atari, Inc.
+Atari 1200XL Atari, Inc.
+Atari 600XL Atari, Inc.
+Atari 800XL Atari, Inc.
+Atari 65XE Atari, Inc.
+Atari 130XE Atari, Inc.
+2024-04-16 20:31:21,965 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,965 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 9}
+Atari ST Atari Corporation
+Atari TT Atari Corporation
+Falcon Atari Corporation
+2024-04-16 20:31:21,966 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,966 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 10}
+Bally Brain Bally Consumer Products
+Bally Astrocade Bally Consumer Products
+2024-04-16 20:31:21,967 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,967 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 11}
+CoBra Brasov Computer
+2024-04-16 20:31:21,968 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,969 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 12}
+Lynx Camputers
+2024-04-16 20:31:21,969 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,970 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 13}
+Coleco Adam Coleco
+2024-04-16 20:31:21,971 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,971 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 14}
+PET Commodore
+VIC-20 Commodore
+Commodore 64 Commodore
+Commodore Executive 64 Commodore
+MAX Machine Commodore
+Commodore 16 Commodore
+Commodore 116 Commodore
+Plus/4 Commodore
+Commodore 128 Commodore
+Amiga Commodore
+2024-04-16 20:31:21,972 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,972 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 15}
+Comx-35 Comx World Operations
+2024-04-16 20:31:21,973 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,973 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 16}
+DAI Personal Computer Data Applications International
+2024-04-16 20:31:21,974 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,974 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 17}
+VTech Laser 200 Vtech
+2024-04-16 20:31:21,975 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,975 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 18}
+Video Genie EACA
+Colour Genie EACA
+2024-04-16 20:31:21,977 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,977 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 19}
+Rabbit RX83 Rabbit
+2024-04-16 20:31:21,978 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,978 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 20}
+Alpha Didaktik
+Beta Didaktik
+Gama Didaktik
+2024-04-16 20:31:21,979 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,979 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 21}
+Dragon 32 Dragon Data
+Dragon 64 Dragon Data
+2024-04-16 20:31:21,980 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,980 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 22}
+Dubna 48K Dubna
+2024-04-16 20:31:21,981 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,981 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 23}
+BK-0010 Elektronika
+2024-04-16 20:31:21,982 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,982 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 24}
+AGAT-9 AGAT
+2024-04-16 20:31:21,983 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,983 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 25}
+Pecom 32 Elektronska Industrija Niš
+Pecom 64 Elektronska Industrija Niš
+2024-04-16 20:31:21,984 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,984 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 26}
+Exidy Sorcerer Exidy
+2024-04-16 20:31:21,985 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,985 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 27}
+Enterprise 64 Intelligent Software
+Enterprise 128 Intelligent Software
+2024-04-16 20:31:21,986 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,986 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 28}
+Lambda 8300 Lambda Electronics
+2024-04-16 20:31:21,987 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,987 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 29}
+Franklin ACE Franklin Computer Corporation
+2024-04-16 20:31:21,988 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,988 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 30}
+FM Towns Fujitsu
+FM-7 Fujitsu
+2024-04-16 20:31:21,989 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,989 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 31}
+Grundy NewBrain Grundy Business Systems
+2024-04-16 20:31:21,990 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,990 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 32}
+Gradiente Expert Gradiente
+2024-04-16 20:31:21,991 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,991 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 33}
+Honeywell 316 Honeywell
+2024-04-16 20:31:21,992 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,992 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 34}
+PCjr IBM
+IBM PS/1 IBM
+2024-04-16 20:31:21,993 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,993 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 35}
+Interact Home Computer Interact
+2024-04-16 20:31:21,994 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,994 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 36}
+Compucolor II Intelligent Systems Corporation
+2024-04-16 20:31:21,995 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,995 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 37}
+Hobbit Intercompex
+2024-04-16 20:31:21,996 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,996 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 38}
+Iskra-1030 Iskra
+2024-04-16 20:31:21,997 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,997 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 39}
+Ivel Ultra Ivasim
+Ivel Z3 Ivasim
+2024-04-16 20:31:21,998 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,998 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 40}
+Jupiter ACE Jupiter Cantab
+2024-04-16 20:31:21,999 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:21,999 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 41}
+ABC 80 Luxor
+2024-04-16 20:31:22,000 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,000 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 42}
+Aquarius Mattel
+2024-04-16 20:31:22,001 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,001 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 43}
+Matra Alice Matra
+2024-04-16 20:31:22,002 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,002 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 44}
+MTX500 Memotech
+MTX512 Memotech
+RS128 Memotech
+2024-04-16 20:31:22,003 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,003 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 45}
+MicroBee Microbee Systems
+2024-04-16 20:31:22,004 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,004 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 46}
+CCE MC-1000 Comércio de Componentes Eletrônicos
+2024-04-16 20:31:22,005 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,005 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 47}
+TK82C Microdigital Eletronica
+2024-04-16 20:31:22,006 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,006 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 48}
+SAM Coupé Miles Gordon Technology
+2024-04-16 20:31:22,007 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,007 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 49}
+Microprofessor III Multitech
+2024-04-16 20:31:22,008 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,008 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 50}
+NEC PC-100 NEC
+2024-04-16 20:31:22,009 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,009 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 51}
+PC-6000 NEC Home Electronics
+PC-8800 NEC
+2024-04-16 20:31:22,010 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,010 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 52}
+TRS-80 Color Computer Radio Shack
+TRS-80 Color Computer 2 Radio Shack
+TRS-80 Color Computer 3 Radio Shack
+TRS-80 Model I Radio Shack
+TRS-80 MC-10 Radio Shack
+Tandy 1000 Radio Shack
+2024-04-16 20:31:22,011 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,011 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 53}
+Euro PC Schneider Computer Division
+2024-04-16 20:31:22,012 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,012 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 54}
+Oric 1 Tangerine Computer Systems
+Oric Atmos Tangerine Computer Systems
+Oric Telestrat Tangerine Computer Systems
+2024-04-16 20:31:22,013 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,013 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 55}
+Galeb PEL Varaždin
+Orao PEL Varaždin
+2024-04-16 20:31:22,014 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,014 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 56}
+P2000 Philips
+G7480 Philips
+Philips :YES Philips
+2024-04-16 20:31:22,015 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,015 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 57}
+Pravetz 8 Pravetz
+Pravetz 8D Pravetz
+IMKO-1 Pravetz
+2024-04-16 20:31:22,016 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,016 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 58}
+Poly-1 Progeni Systems / Polycorp
+2024-04-16 20:31:22,017 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,017 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 59}
+Prológica CP-400 Prológica
+2024-04-16 20:31:22,018 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,018 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 60}
+KC 85 VEB Robotron
+KC 87 VEB Robotron
+Z1013 VEB Robotron
+2024-04-16 20:31:22,019 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,019 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 61}
+SC-3000 Sega
+2024-04-16 20:31:22,020 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,020 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 62}
+MZ Sharp
+Sharp X1 Sharp
+Sharp X68000 Sharp
+ZX80 Sinclair Research
+ZX81 Sinclair Research
+ZX Spectrum Sinclair Research
+Sinclair QL Sinclair Research
+2024-04-16 20:31:22,021 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,022 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 64}
+Sord M200 Smart Home Computer Sord Computer Corporation
+Sord M5 Sord Computer Corporation
+2024-04-16 20:31:22,023 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,023 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 65}
+Aamber Pegasus Technosys
+TI-99/4 Texas Instruments
+TI-99/4A Texas Instruments
+2024-04-16 20:31:22,024 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,024 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 67}
+PMD 85 Tesla
+2024-04-16 20:31:22,024 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,025 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 68}
+MAŤO Štátny majetok Závadka š.p.
+2024-04-16 20:31:22,026 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,026 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 69}
+TO7 Thomson
+MO5 Thomson
+2024-04-16 20:31:22,027 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,027 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 70}
+Timex Sinclair 1000 Timex Sinclair
+Timex Sinclair 1500 Timex Sinclair
+Timex Sinclair 2048 Timex Sinclair
+Timex Computer 2048 Timex Sinclair
+Timex Computer 2068 Timex Sinclair
+Komputer 2086 Timex Sinclair
+2024-04-16 20:31:22,028 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,028 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 71}
+Tomy Tutor Tomy
+2024-04-16 20:31:22,029 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,029 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 72}
+Vector-06C Vector
+2024-04-16 20:31:22,030 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,030 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 73}
+VideoBrain Family Computer Videobrain
+2024-04-16 20:31:22,031 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,031 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 74}
+TVC Videoton
+2024-04-16 20:31:22,032 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,032 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 75}
+West PC-800 West Computer AS
+2024-04-16 20:31:22,033 INFO sqlalchemy.engine.Engine SELECT manufacturers.id AS manufacturers_id, manufacturers.name AS manufacturers_name
+FROM manufacturers
+WHERE manufacturers.id = %(pk_1)s
+2024-04-16 20:31:22,033 INFO sqlalchemy.engine.Engine [cached since 625.6s ago] {'pk_1': 76}
+GEM 1000 GEM
+>>>
+}}}
+
+=== Relationship Loaders ===
+
+query 에서 사용방법
+{{{
+>>> from sqlalchemy.orm import joinedload
+>>> q = select(Product).options(joinedload(Product.manufacturer))
+}}}
+
+Model 에 정의하는 법
+{{{
+   16     manufacturer: Mapped['Manufacturer'] = relationship(
+~  17         lazy='joined', back_populates='products')
+}}}
+
+
+loader의 종류
+- select
+- immediate
+- joined
+- subquery
+- selectin
+- write_only
+- noload
+- raise and raise_on_sql
+- dynamic
+
+when          | loaders
+Lazy load     | select(default), dynamic(lagacy)
+Eager load    | joined,selectin,subquery,immediate
+Explicit load | write_only(SQLAlchemy 2.0 and up), noload,raise,raise_on_sql
+
+=== Deletion of Related Objects with a Cascade ===
+
+{{{
+>>> from db import Session
+>>> from models import Product
+>>> from models import Product,Manufacturer
+>>> session = Session()
+>>> p = session.get(Product,24)
+>>> p
+Product(24, "Atari 400")
+>>> m = p.manufacturer
+>>> m
+Manufacturer(8, "Atari, Inc.")
+>>> session.delete(p)
+>>> session.commit()
+>>>
+>>>
+>>> session.delete(m)
+>>> session.commit()
+Traceback (most recent call last):
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/engine/base.py", line 1939, in _exec_single_context
+    self.dialect.do_executemany(
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/dialects/postgresql/psycopg2.py", line 794, in do_executemany
+    cursor.executemany(statement, parameters)
+psycopg2.errors.NotNullViolation: null value in column "manufacturer_id" of relation "products" violates not-null constraint
+DETAIL:  Failing row contains (25, Atari 800, null, 1979, USA, 6502).
+
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "<stdin>", line 1, in <module>
+  File "/home2/goya/git/retrofun/venv/lib/python3.9/site-packages/sqlalchemy/orm/session.py", line 1972, in commit
+    trans.commit(_to_root=True)
+.......................
+sqlalchemy.exc.IntegrityError: (psycopg2.errors.NotNullViolation) null value in column "manufacturer_id" of relation "products" violates not-null constraint
+DETAIL:  Failing row contains (25, Atari 800, null, 1979, USA, 6502).
+
+[SQL: UPDATE products SET manufacturer_id=%(manufacturer_id)s WHERE products.id = %(products_id)s]
+[parameters: [{'manufacturer_id': None, 'products_id': 25}, {'manufacturer_id': None, 'products_id': 26}, {'manufacturer_id': None, 'products_id': 27}, {'manufacturer_id': None, 'products_id': 28}, {'manufacturer_id': None, 'products_id': 29}, {'manufacturer_id': None, 'products_id': 30}]]
+(Background on this error at: https://sqlalche.me/e/20/gkpj)
+}}}
+
+{{{
+>>> session.rollback()
+}}}
+
+two option
+- save-update, merge
+- 'all, delete-orphan'
+
+{{{
+28     products: Mapped[list['Product']] = relationship(
+29         cascade='all, delete-orphan', back_populates='manufacturer')
+}}}
+
+{{{
+>>> from db import Session
+>>> from models import Product,Manufacturer
+>>> session = Session()
+>>> m = session.get(Manufacturer,8)
+>>> m
+Manufacturer(8, "Atari, Inc.")
+>>> session.delete(m)
+>>> session.commit()
+>>>
+}}}
+
+=== Detaching Related Objects ===
+{{{
+>>> p= session.get(Product, 1)
+>>> p
+Product(1, "Acorn Atom")
+>>> m = p.manufacturer
+>>> m
+Manufacturer(1, "Acorn Computers Ltd")
+>>> p
+Product(1, "Acorn Atom")
+>>> m
+Manufacturer(1, "Acorn Computers Ltd")
+>>> m.products.remove(p)
+>>> session.commit()
+>>>
+}}}
+
+{{{
+>>> p = session.get(Product, 1)
+>>> print(p)
+None
+}}}
+
+Detaching a one-to-many relationship also works from the "many" side:
+{{{
+>>> p = session.get(Product,2)
+>>> p
+Product(2, "BBC Micro")
+>>> p.manufacturer = None
+>>> session.commit()
+}}}
+
+
+=== Exercises ===
+
+1. The list of products made by IBM and Texas Instruments.
+
+{{{
+>>> from db import Session
+>>> from models import Product,Manufacturer
+>>> session = Session()
+>>> from sqlalchemy import select
+>>> from sqlalchemy import or_
+>>> q = select(Product.name, Manufacturer.name).join(Product.manufacturer).where(or_(Manufacturer.name == 'IBM',Manufacturer.name =='Texas Instruments'))
+>>> session.scalars(q).all()
+['PCjr', 'IBM PS/1', 'TI-99/4', 'TI-99/4A']
+>>> session.execute(q).all()
+[('PCjr', 'IBM'), ('IBM PS/1', 'IBM'), ('TI-99/4', 'Texas Instruments'), ('TI-99/4A', 'Texas Instruments')]
+}}}
+
+2. Manufacturers that operate in Brazil.
+
+{{{
+ >>> q = select(Manufacturer).join(Product.manufacturer).where(Product.country == 'Brazil')
+>>> session.execute(q).all()
+[(Manufacturer(32, "Gradiente"),), (Manufacturer(46, "Comércio de Componentes Eletrônicos"),), (Manufacturer(47, "Microdigital Eletronica"),), (Manufacturer(59, "Prológica"),)]
+}}}
+
+3. Products that have a manufacturer that has the word "Research" in their name.
+{{{
+>>> q = select(Product.name, Manufacturer.name).join(Product.manufacturer).where(Manufacturer.name.like('%Research%'))
+>>> session.execute(q).all()
+[('ZX80', 'Sinclair Research'), ('ZX81', 'Sinclair Research'), ('ZX Spectrum', 'Sinclair Research'), ('Sinclair QL', 'Sinclair Research')]
+}}}
+
+

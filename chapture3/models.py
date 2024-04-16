@@ -14,7 +14,7 @@ class Product(Model):
     cpu: Mapped[Optional[str]] = mapped_column(String(32))
 
     manufacturer: Mapped['Manufacturer'] = relationship(
-        back_populates='products')
+        lazy='joined', back_populates='products')
 
     def __repr__(self):
         return f'Product({self.id}, "{self.name}")'
@@ -27,6 +27,7 @@ class Manufacturer(Model):
 
     products: Mapped[list['Product']] = relationship(
         cascade='all, delete-orphan', back_populates='manufacturer')
+        #back_populates='manufacturer')
 
     def __repr__(self):
         return f'Manufacturer({self.id}, "{self.name}")'
