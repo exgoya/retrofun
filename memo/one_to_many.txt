@@ -751,5 +751,3 @@ Product(2, "BBC Micro")
 >>> session.execute(q).all()
 [('ZX80', 'Sinclair Research'), ('ZX81', 'Sinclair Research'), ('ZX Spectrum', 'Sinclair Research'), ('Sinclair QL', 'Sinclair Research')]
 }}}
-
-

@@ -360,7 +360,7 @@ SELECT products.manufacturer, count(*) AS num_products
 FROM products GROUP BY products.manufacturer 
 HAVING count(*) >= :param_1 ORDER BY products.manufacturer
 }}}
-
+--
 Pagination
 {{{
 >>> q = select(Product).order_by(Product.name).limit(3)

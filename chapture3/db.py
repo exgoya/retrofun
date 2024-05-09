@@ -16,5 +16,6 @@ class Model(DeclarativeBase):
 load_dotenv()
 
 #engine = create_engine(os.environ['DATABASE_URL'], echo=True)
-engine = create_engine(os.environ['DATABASE_URL'])
+#engine = create_engine(os.environ['DATABASE_URL'])
+engine = create_engine("goldilocks://test:test@127.0.0.1:30009", echo=True)
 Session = sessionmaker(engine)
