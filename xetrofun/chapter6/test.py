@@ -5,7 +5,8 @@ from models import BlogArticle, BlogView, Product
 
 session = Session()
 
-page_views = func.count(BlogView.id).label('count_1')
+#page_views = func.count(BlogView.id).label(None)
+page_views = func.count(BlogView.id).label(None)
 
 q1 = (select(Product.name, page_views)
     .join(BlogArticle.product, isouter=True)
@@ -25,8 +26,9 @@ q2 = (select(Product.name, page_views)
     .having( page_views== 0))
 
 #q = union(q1, q2).order_by(text('count_1 DESC'), Product.name)
-q = union(q1, q2).order_by(func.count(BlogView.id), Product.name)
+#q = union(q1, q2).order_by(func.count(BlogView.id), Product.name)
+q = union(q1, q2).order_by(page_views.desc(), Product.name)
+#q = union(q1, q2).order_by(func.count(BlogView.id).label(None).desc(), Product.name)
+#print(q)
 print(page_views)
-#q = union(q1, q2).order_by(page_views.desc(), Product.name)
-print(q)
 print(session.execute(q).all())
