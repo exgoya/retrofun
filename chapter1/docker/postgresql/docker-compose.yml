@@ -1,5 +1,5 @@
 version: '3'
-
+ 
 services:
   db:
     image: postgres
@@ -7,7 +7,7 @@ services:
     environment:
       POSTGRES_PASSWORD: ekd9wkd
     ports:
-      - "5433:5432"
+      - "5433:5433"
     volumes:
       - db-data:/var/lib/postgresql/data
   admin:
@@ -23,4 +23,3 @@ services:
 volumes:
   db-data:
   admin-data:
-
